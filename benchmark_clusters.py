@@ -25,6 +25,7 @@ if __name__ == "__main__":
     # make output file
     outputs = {
         "samples": {},
+        "samples_idx": {},
         "results": {}
     }
     output_path = argv[3]
@@ -33,14 +34,16 @@ if __name__ == "__main__":
 
     for size in sizes:
         all_c = []
-        sample = df.sample(size, random_state=random_seed).values
+        df_sample = df.sample(size, random_state=random_seed)
+        sample = df_sample.values
         outputs["samples"][size] = sample
+        outputs["samples_idx"][size] = df_sample.index
         outputs["results"][size] = {}
         save_to_pickle(outputs, output_path)
 
         # 1. run gmeans x 3
         outputs["results"][size]["gmeans"] = []
-        for run in range(3):
+        for run in range(1):
             print("running g-means on " + str(size) + " samples...")
             start = time()
             _, labels, centers = gmeans(sample)
@@ -49,7 +52,7 @@ if __name__ == "__main__":
                   "s, cl=" + str(len(centers)))
             result = {
                 "labels": labels,
-                "centers": centers,
+                "centers": np.uint8(centers),
                 "elapsed": elapsed
             }
             outputs["results"][size]["gmeans"].append(result)
@@ -58,7 +61,7 @@ if __name__ == "__main__":
 
         # 2. run pyclustering.gmeans x 3
         outputs["results"][size]["pyc_gmeans"] = []
-        for run in range(3):
+        for run in range(0):
             print("running pyclustering g-means on " +
                   str(size) + " samples...")
             start = time()
@@ -66,7 +69,7 @@ if __name__ == "__main__":
             pygm.process()
             elapsed = time() - start
             labels = np.full((len(sample),), None)
-            centers = np.array(pygm.get_centers())
+            centers = np.uint8(np.array(pygm.get_centers()))
             for ci, c in enumerate(pygm.get_clusters()):
                 for i in c:
                     labels[i] = ci
@@ -81,20 +84,24 @@ if __name__ == "__main__":
             all_c.append(len(centers))
             save_to_pickle(outputs, output_path)
 
-        # 3. run Ward clustering, with k = largest from k-means
+        # 3. run Ward clustering, with k = 0.4*n
         outputs["results"][size]["ward"] = []
         for run in range(1):
+            cl_numbers = int(0.4 * size)
             print("running ward clustering on " +
-                  str(size) + " samples... c=" + str(max(all_c)))
+                  str(size) + " samples... c=" + str(cl_numbers))
             start = time()
             wa = AgglomerativeClustering(
-                n_clusters=max(all_c), linkage='ward').fit(sample)
+                n_clusters=cl_numbers, linkage='ward').fit(sample)
             elapsed = time() - start
             print("ward finished in " + str(elapsed) +
-                  "s, cl=" + str(max(all_c)))
+                  "s, cl=" + str(cl_numbers))
+            cls = [[] for i in range(cl_numbers)]
+            for i, c in enumerate(wa.labels_):
+                cls[c].append(i)
             result = {
                 "labels": wa.labels_,
-                "centers": max(all_c),
+                "centers": np.uint8(np.array([pd.DataFrame(sample[members]).mean().values for members in cls])),
                 "elapsed": elapsed
             }
             outputs["results"][size]["ward"].append(result)
