@@ -167,6 +167,6 @@ if __name__ == "__main__":
             ).mean()
             result = run_birch(shuffled_df.values, threshold)
             result["random_seed"] = shuffled_rand
-            result["samples_idx"] shuffled_df.index
+            result["samples_idx"] = shuffled_df.index
             outputs["results"][size]["birch"].append(result)
             save_to_pickle(outputs, output_path)
