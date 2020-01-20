@@ -5,7 +5,8 @@ from time import time
 from sys import argv
 from random import randint
 from gmeans import gmeans
-from sklearn.cluster import AgglomerativeClustering, KMeans
+from sklearn.cluster import AgglomerativeClustering, KMeans, Birch
+from sklearn.metrics import pairwise_distances
 from memory_profiler import profile
 
 
@@ -66,6 +67,23 @@ def run_kmeans(sample, cl_numbers):
     return result
 
 
+@profile
+def run_birch(sample, threshold):
+    start = time()
+    bc = Birch(threshold=threshold,
+               branching_factor=len(sample),
+               n_clusters=None).fit(sample.astype(np.float))
+    elapsed = time() - start
+    result = {
+        "labels": bc.labels_,
+        "centers": np.uint8(bc.subcluster_centers_),
+        "elapsed": elapsed
+    }
+    print("birch finished in " + str(elapsed) +
+          "s, cl=" + str(len(result["centers"])))
+    return result
+
+
 if __name__ == "__main__":
 
     # parse input sizes
@@ -73,7 +91,8 @@ if __name__ == "__main__":
 
     # parse how many times gmeans, ward, and kmeans
     # is to ran
-    gmeans_count, ward_count, kmeans_count = map(int, argv[2].split(","))
+    gmeans_count, ward_count, kmeans_count, birch_count = map(
+        int, argv[2].split(","))
 
     # load dataset
     df = pd.read_pickle(argv[3])
@@ -82,6 +101,8 @@ if __name__ == "__main__":
     outputs = {
         "samples": {},
         "samples_idx": {},
+        "colnames": df.colnames,
+        "input_filename": argv[3],
         "results": {}
     }
     output_path = argv[4]
@@ -126,4 +147,26 @@ if __name__ == "__main__":
                   str(size) + " samples... c=" + str(cl_numbers))
             result = run_kmeans(sample, cl_numbers)
             outputs["results"][size]["kmeans"].append(result)
+            save_to_pickle(outputs, output_path)
+
+        # 3. run birch
+        outputs["results"][size]["birch"] = []
+        for run in range(birch_count):
+            shuffled_rand = randint(0, 100000)
+            shuffled_df = df_sample.sample(
+                len(df_sample), random_state=random_seed)
+            print("running birch on " +
+                  str(size) + " samples...")
+            threshold = np.array([np.percentile(
+                pairwise_distances(df_sample.sample(
+                    min(
+                        1000, int(
+                            0.1 * len(
+                                df_sample)))).values, metric='euclidean'
+                ), 1) for i in range(100)]
+            ).mean()
+            result = run_birch(shuffled_df.values, threshold)
+            result["random_seed"] = shuffled_rand
+            result["samples_idx"] shuffled_df.index
+            outputs["results"][size]["birch"].append(result)
             save_to_pickle(outputs, output_path)
